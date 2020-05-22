@@ -1,0 +1,161 @@
+from BitHash import BitHash
+import math
+#some sections based on HashTable
+
+class Link(object):
+    def __init__(self, k, d):
+        self.key  = k
+        self.data = d
+
+class CuckooHashTab(object):
+    def __init__(self, size):
+        #cuckoohash made up of two hashtables
+        self.__hashArrayOne = [None] * size
+        self.__hashArrayTwo= [None] * size
+        self.__numKeys=0
+        self.__size=size
+        #maxloop is calculated according to original paper on Cuckoo Hash, see section 4.1 
+        self.__maxLoops=3*math.log(self.__size)
+        self.bitHash=1
+        
+    def insert(self, k, d):
+        # if the key is already there, return false
+        if self.find(k)!=None:
+            return False
+        
+        l= Link(k, d)
+        loop=0
+        MaxLoop=self.__maxLoops
+        curr=l
+        #go into loop, if loop hits maxLoop number it is likely that the Cuckoo Hash has entered into an infinite loop
+        while loop<MaxLoop:
+            loop+=1
+            
+            Elem=self.__hashArrayOne[BitHash(curr.key,self.bitHash)%self.__size]
+            self.__hashArrayOne[BitHash(curr.key,self.bitHash)%self.__size]=curr
+            #if there was nothing in Elem then the link was able to be inserted into the first hash table
+            if Elem==None:
+                self.__numKeys += 1
+                if self.__numKeys == self.__size/2: 
+                #if the numKeys reaches half the size of the Cuckoo Hash Table 
+                #the function regrows to lessen the likelyhood that an infinite loop will happen when trying to insert next
+                    self.__growHash()
+                return True
+            
+            #if there was something in the first hashtable that was kicked out
+            #by the insert then try to insert that link into the second hashtable
+            
+            curr=Elem
+            Elem=self.__hashArrayTwo[BitHash(curr.key,self.bitHash+1)%self.__size]
+            self.__hashArrayTwo[BitHash(curr.key,self.bitHash+1)%self.__size]=curr
+         
+            if Elem==None:
+                
+                self.__numKeys += 1
+                if self.__numKeys == self.__size/2:
+                    self.__growHash()
+                return True
+           
+            
+            curr=Elem
+        #if is not able to insert into either and reaching the max number of loops
+        #grows and rehashes and then tries to insert again   
+
+        self.__growHash() 
+        #recursively inserts
+        return self.insert(curr.key,curr.data)
+        
+        
+            
+    def __find(self, k):
+        # hash in order to identify the bucket where the key might be in array one
+        bucketOne = BitHash(k,self.bitHash)%self.__size
+        
+        #hash in order to identify the bucket where the key might be in array two
+        bucketTwo= BitHash(k,self.bitHash+1)%self.__size
+        
+        # find whatever is at the positions in the two hash arrays
+        l = self.__hashArrayOne[bucketOne]  
+        j=  self.__hashArrayTwo[bucketTwo]
+     
+        #first return bucket one if whatever is in that bucket is the key
+
+        if l and l.key == k: 
+            return  l
+        
+        #if not then return bucket two if it exists and whatever is in that bucket is the key
+        
+        elif j and j.key==k: 
+            return  j
+
+        else:
+            #return None if the key can't be found in either of the hash arrays  
+            return  None  
+   
+        
+    def find(self, k):
+        l = self.__find(k)
+        #return data if could find the node else return None
+        return l.data if l else None
+    
+    def delete(self, k):
+        
+        # hash in order to identify the bucket where the key might be in array one
+        bucketOne = BitHash(k,self.bitHash)%self.__size
+        
+        #hash in order to identify the bucket where the key might be in array two
+        bucketTwo= BitHash(k,self.bitHash+1)%self.__size
+        
+        # set to whatever is in each hash array
+        l = self.__hashArrayOne[bucketOne]  
+        j=  self.__hashArrayTwo[bucketTwo]
+        
+        #if in hash array one set to None and return True
+        if l and l.key == k: 
+            self.__hashArrayOne[bucketOne]=None
+            #decrement numkeys
+            self.__numKeys-=1
+            return True
+     
+        #if not in hash array one, see if in hash array two, set to None if found and return True
+        elif j and j.key==k: 
+            self.__hashArrayTwo[bucketTwo]=None
+            #decrement numkeys
+            self.__numKeys-=1
+            return True
+        
+        #if in neither return False
+        else:
+            return False
+        
+    def __growHash(self):
+        #create newHashtable that is double the size of the current hash table
+        newHashTable=CuckooHashTab(self.__size*2)
+        
+     
+        #loop through first hasharray and insert into new cuckoo hash table if find a node
+        for i in range(self.__size):
+            elem=self.__hashArrayOne[i]
+            if elem:
+                newHashTable.insert( elem.key,elem.data)
+      
+                
+        #loop through second hasharray and insert into new cuckoo hash table if find a node        
+        for i in range(self.__size):
+            elem=self.__hashArrayTwo[i]
+            if elem:
+                newHashTable.insert(elem.key,elem.data)
+              
+        #set current hash arrays to new hasharrays    
+        self.__hashArrayOne=newHashTable.__hashArrayOne
+        self.__hashArrayTwo=newHashTable.__hashArrayTwo
+        #increase size
+        self.__size=self.__size*2
+        #set self to newHashTable
+        self=newHashTable 
+        #increment bit hash so bit hash is different to what was used before
+        self.bitHash+=1
+        
+        
+   #len defined as number of numkeys         
+    def __len__(self): return self.__numKeys
